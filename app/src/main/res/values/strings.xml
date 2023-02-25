@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">piWorkout Android</string>
+    <string name="title_activity_settings">piWorkout Android - Settings</string>
+
+    <!-- Settings -->
+    <string name="server_header">Server Settings</string>
+    <string name="host_title">Server Host</string>
+    <string name="app_header">Application Settings</string>
+    <string name="timer_title">Enable timer</string>
+    <string name="muted_title">Audio Muted</string>
+    <string name="timer_default">00:00.000</string>
+</resources>
