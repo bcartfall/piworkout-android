@@ -18,6 +18,11 @@ piWorkout Android is the mobile application to connect to the piWorkout Server a
 3. Enter in IP Address and Port of server.
 4. Watch videos on desktop client to see video on Android app.
 
+# Instructions
+
+- Single tap to start / restart timer.
+- Double tap to open settings. Use back button / swipe from left to go back from settings page.
+
 # Licence
 
 This project is licensed under GPLv2.
