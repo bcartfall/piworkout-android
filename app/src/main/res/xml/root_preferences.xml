@@ -10,6 +10,15 @@
     </PreferenceCategory>
 
     <PreferenceCategory app:title="@string/app_header">
+        <DropDownPreference
+            app:key="videoQuality"
+            app:title="@string/video_quality_title"
+            app:defaultValue="4K"
+            app:useSimpleSummaryProvider="true"
+            app:entries="@array/entries_video_quality"
+            app:entryValues="@array/entry_video_quality_values"
+            />
+
         <SwitchPreferenceCompat
             app:key="timer"
             app:title="@string/timer_title"

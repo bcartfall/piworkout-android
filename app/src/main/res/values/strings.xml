@@ -9,4 +9,5 @@
     <string name="timer_title">Enable timer</string>
     <string name="muted_title">Audio Muted</string>
     <string name="timer_default">00:00.000</string>
+    <string name="video_quality_title">Video Quality</string>
 </resources>

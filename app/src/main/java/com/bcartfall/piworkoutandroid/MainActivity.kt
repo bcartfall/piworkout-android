@@ -5,10 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
-import android.view.GestureDetector
-import android.view.MotionEvent
-import android.view.View
-import android.view.WindowManager
+import android.view.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.view.WindowCompat
@@ -31,6 +28,7 @@ import java.util.*
 import kotlin.math.min
 import kotlin.math.roundToLong
 
+
 private const val DEBUG_TAG = "GESTURES"
 private const val WEBSOCKET_TAG = "WEBSOCKET"
 
@@ -50,6 +48,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
     private val diffQueue: Queue<Long> = LinkedList<Long>()
     private var serverHost = ""
     private var volume = 0f
+    private var videoQuality = ""
     private lateinit var timerTextView: TimerTextView
 
     private val viewBinding by lazy(LazyThreadSafetyMode.NONE) {
@@ -226,10 +225,25 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
                 if (video != null) {
                     currentVideo = video
                     // play video at position provided by server
-                    val videoQuality = settings?.get("videoQuality") // check if server only has 720p quality
-                    var format = "1080p" // this android device is limited to 1080p
-                    if (video.height < 1080 || videoQuality == "720p") {
-                        format = "720p"
+                    var format: String
+
+                    val maxSupportedHeight = when (videoQuality) {
+                        "4K" -> 2160
+                        "1440p" -> 1440
+                        "1080p" -> 1080
+                        "720p" -> 720
+                        else -> 2160
+                    }
+
+                    Log.i(WEBSOCKET_TAG, "videoHeight=${video.height}, maxSupportedHeight=$maxSupportedHeight")
+                    format = if (video.height >= 2160 && maxSupportedHeight > 1440) {
+                        "4K"
+                    } else if (video.height >= 1440 && maxSupportedHeight > 1080) {
+                        "1440p"
+                    } else if (video.height >= 1080 && maxSupportedHeight > 720) {
+                        "1080p"
+                    } else {
+                        "720p"
                     }
 
                     val uri = "http://" + serverHost + "/videos/${video.id}-$format-${video.filename}"
@@ -340,6 +354,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
         } else {
             1f
         }
+        videoQuality = sharedPreferences.getString("videoQuality", "4K").toString()
 
         if (sharedPreferences.getBoolean("timer", true)) {
             timerTextView.visibility = View.VISIBLE
@@ -445,6 +460,17 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
     override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
         Log.d(DEBUG_TAG, "onSingleTapConfirmed: $event")
         return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        Log.d(DEBUG_TAG, "onKeyUp: $event")
+        return when (keyCode) {
+            KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_MENU, 4077 -> {
+                switchToSettingsActivity()
+                true
+            }
+            else -> super.onKeyUp(keyCode, event)
+        }
     }
 
     public override fun onPause() {

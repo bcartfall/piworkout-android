@@ -22,6 +22,11 @@ piWorkout Android is the mobile application to connect to the piWorkout Server a
 
 - Single tap to start / restart timer.
 - Double tap to open settings. Use back button / swipe from left to go back from settings page.
+- Android TV: Open settings with "Menu" button or the following keyboard buttons: s, and Esc.
+
+# Notes
+
+It is assumed that mobile devices do not support > 1080p so it is hard coded at 1080p. To change this modify the `maxSupportedHeight` variable in the `onCreate()` function.
 
 # Licence
 
