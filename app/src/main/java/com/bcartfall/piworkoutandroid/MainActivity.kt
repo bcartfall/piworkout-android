@@ -281,13 +281,13 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
                             val minDiff = -66
                             val maxDiff = 0
                             if (!buffering && (aDiff <= minDiff || aDiff >= maxDiff) && System.currentTimeMillis() >= diffSyncWait) {
-                                if (cDiff < 0) {
+                                if (cDiff < minDiff) {
                                     // slow player so server can catch up (1.0f to 0.75f)
                                     playbackSpeed = 1.0f - (min(((-cDiff) + minDiff).toInt(), (1000 + minDiff)).toFloat() / (1000 + minDiff).toFloat() * 0.25f)
                                     Log.i(WEBSOCKET_TAG, "handlePlayer() sync!!!!!, client is ahead, setting playbackSpeed=$playbackSpeed")
-                                } else {
+                                } else if (cDiff > maxDiff) {
                                     // increase player to catch up to server (1.0f to 1.5f)
-                                    playbackSpeed = 1.0f + ((min(cDiff.toInt(), 1000).toFloat() / 1000) * 0.5f)
+                                    playbackSpeed = 1.0f + ((min(cDiff.toInt() + maxDiff, 1000).toFloat() / (1000 + maxDiff)) * 0.25f)
                                     Log.i(WEBSOCKET_TAG, "handlePlayer() sync!!!!!, server is ahead, setting playbackSpeed=$playbackSpeed")
                                 }
                                 player!!.setPlaybackSpeed(playbackSpeed)
@@ -319,6 +319,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
     }
 
     private fun handleVideos(str: String) {
+        Log.i(WEBSOCKET_TAG, str)
         val message = jsonUnknown.decodeFromString<VideosMessage>(str)
         videos = message.videos
     }
