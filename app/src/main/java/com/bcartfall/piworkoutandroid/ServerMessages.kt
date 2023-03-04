@@ -17,6 +17,7 @@ data class InitData(
     val settings: Map<String, String>,
     val connected: Boolean,
     val videos: ArrayList<Video>,
+    val player: PlayerData,
 )
 
 @Serializable

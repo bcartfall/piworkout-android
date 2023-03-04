@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.*
 import androidx.appcompat.app.AppCompatActivity
@@ -45,7 +47,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
     private var serverLatency = 0 // determine latency between client and server
     private var playbackSpeed = 1.0f
     private val seekDelay = 1500 // est time for player to buffer and play video
-    private val diffQueue: Queue<Long> = LinkedList<Long>()
+    private val diffQueue: Queue<Long> = LinkedList()
     private var serverHost = ""
     private var volume = 0f
     private var videoQuality = ""
@@ -167,7 +169,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
                         "init" -> handleInit(str)
                         "videos" -> handleVideos(str)
                         "player" -> handlePlayer(str)
-                        "ping" -> handlePing(str)
+                        "ping" -> handlePing()
                         else -> {
                             Log.i(WEBSOCKET_TAG, "Unhandled namespace ${obj.namespace}")
                         }
@@ -182,7 +184,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
         Log.i(WEBSOCKET_TAG, "Done outputMessages()")
     }
 
-    private fun handlePing(str: String) {
+    private fun handlePing() {
         serverLatency = ((System.currentTimeMillis() - pingSent) * 0.5).toInt()
         Log.i(WEBSOCKET_TAG, "handlePing() serverLatency=$serverLatency")
     }
@@ -213,103 +215,105 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
         val message = jsonUnknown.decodeFromString<PlayerMessage>(str)
         //Log.i(WEBSOCKET_TAG, "handlePlayer() ${message.toString()}")
 
-        val status = message.player.status
-        val action = message.player.action
-        val pId = message.player.videoId
-        val serverPosition = (message.player.time * 1000).roundToLong() + serverLatency
+        actionPlayerData(message.player)
+    }
+
+    private fun actionPlayerData(playerData: PlayerData) {
+        val status = playerData.status
+        val action = playerData.action
+        val pId = playerData.videoId
+        val serverPosition = (playerData.time * 1000).roundToLong() + serverLatency
+
+        if (currentVideo == null || currentVideo?.id != pId) {
+            val video = getVideoById(pId)
+
+            if (video != null) {
+                currentVideo = video
+                // play video at position provided by server
+                val maxSupportedHeight = when (videoQuality) {
+                    "4K" -> 2160
+                    "1440p" -> 1440
+                    "1080p" -> 1080
+                    "720p" -> 720
+                    else -> 2160
+                }
+
+                Log.i(WEBSOCKET_TAG, "videoHeight=${video.height}, maxSupportedHeight=$maxSupportedHeight")
+                val format = if (video.height >= 2160 && maxSupportedHeight > 1440) {
+                    "4K"
+                } else if (video.height >= 1440 && maxSupportedHeight > 1080) {
+                    "1440p"
+                } else if (video.height >= 1080 && maxSupportedHeight > 720) {
+                    "1080p"
+                } else {
+                    "720p"
+                }
+
+                val uri = "http://" + serverHost + "/videos/${video.id}-$format-${video.filename}"
+                Log.i(WEBSOCKET_TAG, "handlePlayer() Playing uri $uri serverPosition=$serverPosition")
+                val mediaItem = MediaItem.fromUri(uri)
+                player?.setMediaItem(mediaItem, (playerData.time * 1000).roundToLong())
+                player?.volume = volume
+                player?.playWhenReady = status == Status.PLAYING.value
+                player?.seekTo(serverPosition + seekDelay)
+                buffering = true
+
+                player?.prepare()
+                diffSyncWait = System.currentTimeMillis() + seekDelay // wait seekDelay before attempting to sync with server
+            }
+        }
 
         if (status == Status.PLAYING.value) {
-            if (currentVideo == null || currentVideo?.id != pId) {
-                val video = getVideoById(pId)
+            // handle actions
+            when (action) {
+                "progress" -> {
+                    if (player != null) {
+                        val clientPosition = player!!.currentPosition
+                        val cDiff = serverPosition - clientPosition // if > 0 server is ahead
 
-                if (video != null) {
-                    currentVideo = video
-                    // play video at position provided by server
-                    var format: String
+                        // average queue keeps playback speed adjustments more balanced
+                        diffQueue.add(cDiff)
+                        if (diffQueue.count() > 10) {
+                            diffQueue.remove()
+                        }
+                        val aDiff = diffQueue.average()
 
-                    val maxSupportedHeight = when (videoQuality) {
-                        "4K" -> 2160
-                        "1440p" -> 1440
-                        "1080p" -> 1080
-                        "720p" -> 720
-                        else -> 2160
-                    }
-
-                    Log.i(WEBSOCKET_TAG, "videoHeight=${video.height}, maxSupportedHeight=$maxSupportedHeight")
-                    format = if (video.height >= 2160 && maxSupportedHeight > 1440) {
-                        "4K"
-                    } else if (video.height >= 1440 && maxSupportedHeight > 1080) {
-                        "1440p"
-                    } else if (video.height >= 1080 && maxSupportedHeight > 720) {
-                        "1080p"
-                    } else {
-                        "720p"
-                    }
-
-                    val uri = "http://" + serverHost + "/videos/${video.id}-$format-${video.filename}"
-                    Log.i(WEBSOCKET_TAG, "handlePlayer() Playing uri $uri serverPosition=$serverPosition")
-                    val mediaItem = MediaItem.fromUri(uri)
-                    player?.setMediaItem(mediaItem, (message.player.time * 1000).roundToLong())
-                    player?.volume = volume
-                    player?.playWhenReady = true
-                    player?.seekTo(serverPosition + seekDelay)
-                    buffering = true
-
-                    player?.prepare()
-                    diffSyncWait = System.currentTimeMillis() + seekDelay // wait seekDelay before attempting to sync with server
-                }
-            } else {
-                // handle actions
-                when (action) {
-                    "progress" -> {
-                        if (player != null) {
-                            val clientPosition = player!!.currentPosition
-                            val cDiff = serverPosition - clientPosition // if > 0 server is ahead
-
-                            // average queue keeps playback speed adjustments more balanced
-                            diffQueue.add(cDiff)
-                            if (diffQueue.count() > 10) {
-                                diffQueue.remove()
-                            }
-                            val aDiff = diffQueue.average()
-
-                            if (!buffering && player!!.isPlaying) {
-                                player!!.play()
-                            }
-
-                            // try to sync with server within tolerance
-                            val minDiff = -66
-                            val maxDiff = 0
-                            if (!buffering && (aDiff <= minDiff || aDiff >= maxDiff) && System.currentTimeMillis() >= diffSyncWait) {
-                                if (cDiff < minDiff) {
-                                    // slow player so server can catch up (1.0f to 0.75f)
-                                    playbackSpeed = 1.0f - (min(((-cDiff) + minDiff).toInt(), (1000 + minDiff)).toFloat() / (1000 + minDiff).toFloat() * 0.25f)
-                                    Log.i(WEBSOCKET_TAG, "handlePlayer() sync!!!!!, client is ahead, setting playbackSpeed=$playbackSpeed")
-                                } else if (cDiff > maxDiff) {
-                                    // increase player to catch up to server (1.0f to 1.5f)
-                                    playbackSpeed = 1.0f + ((min(cDiff.toInt() + maxDiff, 1000).toFloat() / (1000 + maxDiff)) * 0.25f)
-                                    Log.i(WEBSOCKET_TAG, "handlePlayer() sync!!!!!, server is ahead, setting playbackSpeed=$playbackSpeed")
-                                }
-                                player!!.setPlaybackSpeed(playbackSpeed)
-                            } else {
-                                if (playbackSpeed != 1.0f) {
-                                    playbackSpeed = 1.0f
-                                    player!!.setPlaybackSpeed(playbackSpeed)
-                                }
-                            }
-                            Log.i(WEBSOCKET_TAG, "handlePlayer() clientPosition=$clientPosition, serverPosition=$serverPosition, cDiff=$cDiff, aDiff=$aDiff buffering=$buffering")
+                        if (!buffering && player!!.isPlaying) {
+                            player!!.play()
                         }
 
+                        // try to sync with server within tolerance
+                        val minDiff = -66
+                        val maxDiff = 0
+                        if (!buffering && (aDiff <= minDiff || aDiff >= maxDiff) && System.currentTimeMillis() >= diffSyncWait) {
+                            if (cDiff < minDiff) {
+                                // slow player so server can catch up (1.0f to 0.75f)
+                                playbackSpeed = 1.0f - (min(((-cDiff) + minDiff).toInt(), (1000 + minDiff)).toFloat() / (1000 + minDiff).toFloat() * 0.25f)
+                                Log.i(WEBSOCKET_TAG, "handlePlayer() sync!!!!!, client is ahead, setting playbackSpeed=$playbackSpeed")
+                            } else if (cDiff > maxDiff) {
+                                // increase player to catch up to server (1.0f to 1.5f)
+                                playbackSpeed = 1.0f + ((min(cDiff.toInt() + maxDiff, 1000).toFloat() / (1000 + maxDiff)) * 0.25f)
+                                Log.i(WEBSOCKET_TAG, "handlePlayer() sync!!!!!, server is ahead, setting playbackSpeed=$playbackSpeed")
+                            }
+                            player!!.setPlaybackSpeed(playbackSpeed)
+                        } else {
+                            if (playbackSpeed != 1.0f) {
+                                playbackSpeed = 1.0f
+                                player!!.setPlaybackSpeed(playbackSpeed)
+                            }
+                        }
+                        Log.i(WEBSOCKET_TAG, "handlePlayer() clientPosition=$clientPosition, serverPosition=$serverPosition, cDiff=$cDiff, aDiff=$aDiff buffering=$buffering")
                     }
-                    "seek" -> {
-                        Log.i(WEBSOCKET_TAG, "handlePlayer() seeking to $serverPosition, ${message.player.time}")
-                        buffering = true
-                        player?.seekTo(serverPosition)
-                    }
-                    "play" -> {
-                        Log.i(WEBSOCKET_TAG, "handlePlayer() resuming/playing")
-                        player?.play()
-                    }
+
+                }
+                "seek" -> {
+                    Log.i(WEBSOCKET_TAG, "handlePlayer() seeking to $serverPosition, ${playerData.time}")
+                    buffering = true
+                    player?.seekTo(serverPosition)
+                }
+                "play" -> {
+                    Log.i(WEBSOCKET_TAG, "handlePlayer() resuming/playing")
+                    player?.play()
                 }
             }
         } else if (status == Status.STOPPED.value || status == Status.PAUSED.value) {
@@ -328,13 +332,22 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
         val initMessage = jsonUnknown.decodeFromString<InitMessage>(str)
         videos = initMessage.data.videos
         settings = initMessage.data.settings
+        actionPlayerData(initMessage.data.player)
 
         // send ping to server
-        val message = PingMessage(namespace = "ping", uuid = UUID.randomUUID().toString())
-        runBlocking {
-            pingSent = System.currentTimeMillis()
-            websocket?.send(Json.encodeToString(message))
-        }
+        val mainHandler = Handler(Looper.getMainLooper())
+
+        mainHandler.post(object : Runnable {
+            override fun run() {
+                Log.i(WEBSOCKET_TAG, "Sending ping")
+                val message = PingMessage(namespace = "ping", uuid = UUID.randomUUID().toString())
+                runBlocking {
+                    pingSent = System.currentTimeMillis()
+                    websocket?.send(Json.encodeToString(message))
+                }
+                mainHandler.postDelayed(this, 10000)
+            }
+        })
     }
 
     private fun switchToSettingsActivity()
@@ -487,9 +500,10 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
     }
 
     private fun releasePlayer() {
-        player?.let { exoPlayer ->
-            exoPlayer.release()
-        }
+        //player?.let { exoPlayer ->
+        //    exoPlayer.release()
+        //}
+        player?.release()
         player = null
     }
 
