@@ -140,6 +140,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
             }
 
             try {
+                Log.i(WEBSOCKET_TAG, "Connecting to websocket $hostIp:$hostPort")
                 client.webSocket(method = HttpMethod.Get, host = hostIp, port = hostPort, path = "/backend") {
                     websocket = this
                     receive()
@@ -317,7 +318,12 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
                 }
             }
         } else if (status == Status.STOPPED.value || status == Status.PAUSED.value) {
-            Log.i(WEBSOCKET_TAG, "handlePlayer() pausing")
+            if (action == "seek") {
+                Log.i(WEBSOCKET_TAG, "handlePlayer() seeking to $serverPosition, ${playerData.time}")
+                buffering = true
+                player?.seekTo(serverPosition)
+            }
+            Log.i(WEBSOCKET_TAG, "handlePlayer() pausing $action")
             player?.pause()
         }
     }
@@ -439,6 +445,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
 
     override fun onLongPress(event: MotionEvent) {
         Log.d(DEBUG_TAG, "onLongPress: $event")
+        switchToSettingsActivity()
     }
 
     override fun onScroll(
