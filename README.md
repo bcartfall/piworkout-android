@@ -1,6 +1,6 @@
 # piWorkout
 
-piWorkout is a series of Desktop and Mobile applications designed to play a YouTube video only multiple screens synchronized with a workout stopwatch and with allowances for bluetooth audio latency and video latency.
+piWorkout is a series of Desktop and Mobile applications designed to play a YouTube video on multiple screens synchronized with a workout stopwatch and with allowances for bluetooth audio latency and video latency.
 
 - [piWorkout Server](https://github.com/bcartfall/piworkout-server)
 - [piWorkout Desktop](https://github.com/bcartfall/piworkout-desktop)
