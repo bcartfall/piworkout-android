@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.preference.PreferenceManager
 import com.bcartfall.piworkoutandroid.databinding.ActivityMainBinding
 import io.ktor.client.*
+import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.http.*
 import io.ktor.util.*
@@ -26,7 +27,13 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
+import java.security.KeyManagementException
+import java.security.NoSuchAlgorithmException
+import java.security.SecureRandom
+import java.security.cert.CertificateException
+import java.security.cert.X509Certificate
 import java.util.*
+import javax.net.ssl.*
 import kotlin.math.min
 import kotlin.math.roundToLong
 
@@ -74,6 +81,43 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
         // Set the gesture detector as the double tap
         // listener.
         mDetector.setOnDoubleTapListener(this)
+
+        disableSSLCertificateChecking()
+    }
+
+    private fun disableSSLCertificateChecking() {
+        val trustAllCerts: Array<TrustManager> = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun getAcceptedIssuers(): Array<X509Certificate>? {
+                return null
+            }
+
+            @Throws(CertificateException::class)
+            override fun checkClientTrusted(arg0: Array<X509Certificate>, arg1: String) {
+                // Not implemented
+            }
+
+            @Throws(CertificateException::class)
+            override fun checkServerTrusted(arg0: Array<X509Certificate>, arg1: String) {
+                // Not implemented
+            }
+        })
+
+        try {
+            val sc: SSLContext = SSLContext.getInstance("TLS")
+            sc.init(null, trustAllCerts, SecureRandom())
+            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory())
+            HttpsURLConnection.setDefaultHostnameVerifier(
+                object : HostnameVerifier {
+                    override fun verify(s: String?, sslSession: SSLSession?): Boolean {
+                        return true
+                    }
+                }
+            )
+        } catch (e: KeyManagementException) {
+            e.printStackTrace()
+        } catch (e: NoSuchAlgorithmException) {
+            e.printStackTrace()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -135,13 +179,23 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
 
         websocketScope?.launch {
             //Log.i(WEBSOCKET_TAG, "websocketScope: Current thread is ${Thread.currentThread().name}")
-            val client = HttpClient {
+
+            val client = HttpClient(CIO) {
                 install(WebSockets)
+                engine {
+                    https {
+                        trustManager = object: X509TrustManager {
+                            override fun checkClientTrusted(p0: Array<out X509Certificate>?, p1: String?) { }
+                            override fun checkServerTrusted(p0: Array<out X509Certificate>?, p1: String?) { }
+                            override fun getAcceptedIssuers(): Array<X509Certificate>? = null
+                        }
+                    }
+                }
             }
 
             try {
                 Log.i(WEBSOCKET_TAG, "Connecting to websocket $hostIp:$hostPort")
-                client.webSocket(method = HttpMethod.Get, host = hostIp, port = hostPort, path = "/backend") {
+                client.wss(method = HttpMethod.Get, host = hostIp, port = hostPort, path = "/backend") {
                     websocket = this
                     receive()
                 }
@@ -250,7 +304,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
                     "720p"
                 }
 
-                val uri = "http://" + serverHost + "/videos/${video.id}-$format-${video.filename}"
+                val uri = "https://" + serverHost + "/videos/${video.id}-$format-${video.filename}"
                 Log.i(WEBSOCKET_TAG, "handlePlayer() Playing uri $uri serverPosition=$serverPosition")
                 val mediaItem = MediaItem.fromUri(uri)
                 player?.setMediaItem(mediaItem, (playerData.time * 1000).roundToLong())
