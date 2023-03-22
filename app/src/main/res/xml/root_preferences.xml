@@ -7,6 +7,12 @@
             app:title="@string/host_title"
             app:useSimpleSummaryProvider="true" />
 
+        <SwitchPreferenceCompat
+            app:key="ssl"
+            app:title="@string/ssl_title"
+            app:defaultValue="true"
+            />
+
     </PreferenceCategory>
 
     <PreferenceCategory app:title="@string/app_header">

@@ -27,10 +27,6 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
-import java.security.KeyManagementException
-import java.security.NoSuchAlgorithmException
-import java.security.SecureRandom
-import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.*
 import javax.net.ssl.*
@@ -56,6 +52,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
     private val seekDelay = 1500 // est time for player to buffer and play video
     private val diffQueue: Queue<Long> = LinkedList()
     private var serverHost = ""
+    private var ssl = true
     private var volume = 0f
     private var videoQuality = ""
     private lateinit var timerTextView: TimerTextView
@@ -81,43 +78,6 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
         // Set the gesture detector as the double tap
         // listener.
         mDetector.setOnDoubleTapListener(this)
-
-        disableSSLCertificateChecking()
-    }
-
-    private fun disableSSLCertificateChecking() {
-        val trustAllCerts: Array<TrustManager> = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun getAcceptedIssuers(): Array<X509Certificate>? {
-                return null
-            }
-
-            @Throws(CertificateException::class)
-            override fun checkClientTrusted(arg0: Array<X509Certificate>, arg1: String) {
-                // Not implemented
-            }
-
-            @Throws(CertificateException::class)
-            override fun checkServerTrusted(arg0: Array<X509Certificate>, arg1: String) {
-                // Not implemented
-            }
-        })
-
-        try {
-            val sc: SSLContext = SSLContext.getInstance("TLS")
-            sc.init(null, trustAllCerts, SecureRandom())
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory())
-            HttpsURLConnection.setDefaultHostnameVerifier(
-                object : HostnameVerifier {
-                    override fun verify(s: String?, sslSession: SSLSession?): Boolean {
-                        return true
-                    }
-                }
-            )
-        } catch (e: KeyManagementException) {
-            e.printStackTrace()
-        } catch (e: NoSuchAlgorithmException) {
-            e.printStackTrace()
-        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -195,9 +155,16 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
 
             try {
                 Log.i(WEBSOCKET_TAG, "Connecting to websocket $hostIp:$hostPort")
-                client.wss(method = HttpMethod.Get, host = hostIp, port = hostPort, path = "/backend") {
-                    websocket = this
-                    receive()
+                if (ssl) {
+                    client.wss(method = HttpMethod.Get, host = hostIp, port = hostPort, path = "/backend") {
+                        websocket = this
+                        receive()
+                    }
+                } else {
+                    client.ws(method = HttpMethod.Get, host = hostIp, port = hostPort, path = "/backend") {
+                        websocket = this
+                        receive()
+                    }
                 }
                 Log.i(WEBSOCKET_TAG, "Closing websocket connection.")
             } catch (e: Exception) {
@@ -304,7 +271,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
                     "720p"
                 }
 
-                val uri = "https://" + serverHost + "/videos/${video.id}-$format-${video.filename}"
+                val uri = (if (ssl) "https:" else "http:") + "//" + serverHost + "/videos/${video.id}-$format-${video.filename}"
                 Log.i(WEBSOCKET_TAG, "handlePlayer() Playing uri $uri serverPosition=$serverPosition")
                 val mediaItem = MediaItem.fromUri(uri)
                 player?.setMediaItem(mediaItem, (playerData.time * 1000).roundToLong())
@@ -429,6 +396,7 @@ class MainActivity : AppCompatActivity(), GestureDetector.OnGestureListener, Ges
             1f
         }
         videoQuality = sharedPreferences.getString("videoQuality", "4K").toString()
+        ssl = sharedPreferences.getBoolean("ssl", true);
 
         if (sharedPreferences.getBoolean("timer", true)) {
             timerTextView.visibility = View.VISIBLE
